@@ -1,0 +1,1595 @@
+
+%% -*- latex -*-
+\newtoks\nicsroot\directlua{ tex.settoks("nicsroot", os.getenv("NICS_ROOT") or error("NICS_ROOT environment variable has to be set, use the Makefile")) }
+\input{\the\nicsroot /src/nics-cached.tex}
+\endofdump
+\input{\the\nicsroot /src/nics-noncached.tex}
+\hypersetup{
+  pdfauthor={Mihaly Barasz (Nilcons)},
+  pdftitle={Secure C++ Programming},
+}
+\nicsgrid=0
+
+\begin{document}
+
+%% \nicstitleslide{images/chain-laptop}{Secure C++ Programming}{Ide szeretnék valami jobbat (könyv és telefon nélkül) vagy csak szebbet}
+%% \nicstitleslide{images/asm-puzzle}{Assembly Basics}{Hello World in x86/x86-64 Asm}
+%% \nicstitleslide{images/workshop}{Assembly Hello World}{Workshop | Ide lehetne olyan, ahol puzzle-t összeraknak}
+%% \nicstitleslide{images/overflow-waterfall}{Stack Buffer Overflows}{Introduction | Valami jobban ``túlcsordulós'' | flood, spill, dam}
+%% \nicstitleslide{images/stack-smashing}{Stack Smashing}{Workshop}
+%% \nicstitleslide{images/hardhats}{\mono{W^X}}{Executable-space protection}
+%% \nicstitleslide{images/stack-coins}{Stack Protector}{Detect stack smashing}
+%% \nicstitleslide{images/dice}{ASLR}{Address Randomization}
+%% \nicstitleslide{images/ro-maci}{RELRO}{Relocation Read Only | Valami, ami jobban kifér?}
+%% \nicstitleslide{images/heap-overflow}{Heap Overflows}{}
+%% \nicstitleslide{images/format-string}{Format String Vulnerabilities}{}
+%% \nicstitleslide{images/question}{Integer Vulnerabilities}{Valami (egész) számok?}
+%% \nicstitleslide{images/race}{Concurrency}{}
+%% \nicstitleslide{images/best-practices}{Best Practices}{}
+%% \nicstitleslide{images/question}{Modern C++}{Valami modern épület?}
+
+%% \nicstitleslide{images/thankyou}{The End}{Thanks, and good luck with all your coding!}
+
+
+
+
+
+\nicstitleslide[Scanrail1/shutterstock]{images/titlepage}{Secure C++ Programming}{Dublin, May 13--14, 2019}
+
+\section{Welcome}
+
+\begin{slide}{Introductions}{}
+  \begin{nicscolumn}
+    \nicsheader{Each person please say:}
+    \nicsitem{Their name}
+    \nicsitem{What is their background}
+    \nicsitem{How much C/C++ experience they have}
+    \nicsitem{The main thing they want to learn}
+    \nicsmedskip
+    \nicspar{Me: Mihály Bárász <mihaly.barasz@nilcons.com>}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Schedule}{}
+  \begin{nicscolumn*}{1cm}{1.5cm}{8cm}
+    \nicsheader{Today}
+    \nicsitem{Assembly}
+    \nicsitem{Basic vulnerabilities}
+    \nicsitem{Some philosophy}
+    \nicsitem{Most important generic protections}
+    \nicsitem{Down-to-the-metal exercises}
+    \nicsmedskip
+    \nicsheader{Tomorrow}
+    \nicsitem{More vulnerabilities}
+    \nicsitem{Best practices}
+    \nicsitem{More philosophy}
+    \nicsitem{More exercises}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{9.5cm}{2cm}{5.5cm}
+    \begin{nicsextern}{}
+      \nicsincludepic{images/schedule}
+    \end{nicsextern}
+  \end{nicscolumn*}
+\end{slide}
+
+
+
+\section{Assembly}
+\nicstitleslide{images/asm-puzzle}{Assembly Basics}{Hello World in x86/x86-64 Asm}
+
+\begin{slide}{Resources}{Learning & Reference}
+  \begin{nicscolumn}
+    \nicsheader{Online references}
+    \nicsitem{\url{https://www.felixcloutier.com/x86/}}
+    \nicsitem{\url{https://www.aldeid.com/wiki/X86-assembly/Instructions}\\ (less comprehensive, more readable)}
+    \nicsitem{\url{https://defuse.ca/online-x86-assembler.htm}\\(online assembler/disassembler)}
+    \nicsitem{\url{http://www.sandpile.org/}}
+    \nicsheader{Learning, Books}
+    \nicsitem{\url{https://en.wikibooks.org/wiki/X86_Assembly}}
+    \nicsitem{Programming from the Ground Up, Jonathan Bartlett\\
+      old, 32 bit, but very good \url{https://savannah.nongnu.org/projects/pgubook/}}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Syntax}{Intel vs AT&T syntax}
+  \begin{nicscolumn*}{0.7cm}{2cm}{7.2cm}
+    \nicsitem{Common on Linux, default syntax for most Linux tools:
+      \mono{gcc}, \mono{as}, \mono{gdb}\dots\\ ~ \\}
+    \nicsitem{\mono{mov \%rax, \%rbx}\\
+      Order: source, destination\\
+      Registers prefixed with \%}
+    \nicsitem{\mono{mov $0x41, \%rax}\\
+      Constants (immediates) prefixed with \$;
+      C syntax for hexadecimals
+    }
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{8.3cm}{2cm}{7cm}
+    \nicsitem{Universal on Windows, used in many popular Linux tools
+      (\mono{\{n,y,f\}asm}), can be switched to in most tools \\ ~}
+    \nicsitem{\mono{mov rbx, rax}\\Order: destination, source\\}
+    \nicsitem{\mono{mov rax, 41h}\\
+      Special syntax for hexadecimals (often \mono{0x} can be used too)
+    }
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Syntax\dots}{}
+  \begin{nicscolumn*}{0.7cm}{1.5cm}{7cm}
+    \nicsitem{\mono{mov $symbol, \%rax}\\
+      Loads the address of \mono{symbol}}
+    \nicsitem{\mono{mov symbol, \%rax}\\
+      Loads the content of \mono{symbol}\\}
+    \nicspar{Memory references:}
+    \nicsitem{\mono{mov 0x18(\%rdi,\%rsi,4), \%rax}\\
+      {\tiny displacement(base register, offset register, scalar)}}
+    \nicsitem{\mono{movb $5, (\%rax)}\\
+      \mono{movb $5, (\%rax)}\\
+      \mono{b}, \mono{w}, \mono{l}, \mono{q} suffix to the opcode}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{8.3cm}{1.5cm}{7.5cm}
+    \nicsitem{\mono{mov rax, symbol}\\ ~}
+    \nicsitem{\mono{mov rax, [symbol]}\\ ~ \\}
+    \nicspar{}
+    \nicsitem{\mono{mov rax, [rdi + 18h + 4*rsi]}\\
+      {\tiny [base register + displacement + scalar*offset register]}}
+    \nicsitem{\mono{mov qword [rax], 5}\\
+      \mono{mov byte [rax], 5} \\
+      \mono{byte}, \mono{word}, \mono{dword}, \mono{qword} prefix \\ for the operand}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Syntax\dots}{}
+  \begin{nicscolumn*}{0.7cm}{1.5cm}{7cm}
+    \nicspar{Mnemonic differences}
+    \nicsitem{\mono{cwd}, \mono{cdq}, \mono{cqo}, \dots\\}
+    \nicsitem{Comments prefixed with \mono{\#}}
+    \nicsitem{Directives prefixed with \mono{.}}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{8.3cm}{1.5cm}{7.5cm}
+    \nicspar{}
+    \nicsitem{\mono{cwtd}, \mono{cdtl}, \mono{cqto}, \dots\\}
+    \nicsitem{Comments prefixed with \mono{;}}
+    \nicsitem{Directives have no prefix}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Syntax example}{}
+  \begin{nicscolumn*}{4cm}{1.5cm}{8cm}
+    \nicsexterncode{c}
+    \begin{nicsextern}[width=5cm]{}
+      int example(long long a, int *b) {
+        return a / b[5];
+      }
+    \end{nicsextern}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{0.7cm}{3cm}{7cm}
+    \nicsexterncode{asm}
+    \begin{nicsextern}[height=3.7cm]{}
+      .section .text
+
+      .globl example
+      example:
+        # First argument to %rax and sign extend to %rdx
+        movq    %rdi, %rax
+        cqto
+        # b[5] sign extended to %rcx
+        movslq  20(%rsi), %rcx
+        idivq   %rcx
+        # Result is in %rax where we need it
+        ret
+    \end{nicsextern}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{8.3cm}{3cm}{7.5cm}
+    \nicsexterncode{asm}
+    \begin{nicsextern}[height=3.7cm]{}
+      section .text
+
+      global example
+      example:
+        ; First argument to rax and sign extend to rdx
+        mov    rax, rdi
+        cqo
+        ; b[5] sign extended to rcx
+        movsxd rcx, dword [rsi+20]
+        idiv   rcx
+        ; Result is in rax where we need it
+        ret
+    \end{nicsextern}
+  \end{nicscolumn*}
+\end{slide}
+
+\nicstitleslide{images/workshop}{Assembly Hello World}{Workshop}
+
+\begin{slide}{Assembly Workshop}{Hello World!}
+  \begin{nicscolumn}
+    \nicsheader{Goal: get comfortable with the environment and assembly on Linux}
+    \nicspar{Let's write following simple programs:}
+    \nicsitem{Exit with some fix exit code (no crashing!)}
+    \nicsitem{Exit with the exit code equal to number of command line arguments \\
+      Hint: debug and inspect the top of the stack}
+    \nicsitem{Classic ``Hello World''}
+    \nicspar{Additionally:}
+    \nicsitem{Try both syntaxes}
+    \nicsitem{Try 32 and 64 bit executables}
+    \nicsitem{Learn how to get just the actual code part}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Assembly Workshop\dots}{}
+  \begin{nicscolumn*}{0.7cm}{1.5cm}{7cm}
+    \nicsheader{Linux syscall ABI}
+    \nicspar{64 bit}
+    \nicsitem{Syscall number in \mono{rax}}
+    \nicsitem{Arguments: \mono{rdi}, \mono{rsi}, \mono{rdx}, \mono{r10}, \mono{r8}, \mono{r9}}
+    \nicsitem{Instruction: \mono{syscall}}
+    \nicsitem{Result in \mono{rax}}
+    \nicsitem{Note: clobbers \mono{rcx} and \mono{r11}}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{8.3cm}{1.5cm}{7.5cm}
+    \nicsheader{}
+    \nicspar{32 bit}
+    \nicsitem{Syscall number in \mono{eax}}
+    \nicsitem{Arguments: \mono{ebx}, \mono{ecx}, \mono{edx}, \mono{esi}, \mono{edi}, \mono{ebp}}
+    \nicsitem{Instruction: \mono{int 0x80}}
+    \nicsitem{Result in \mono{eax}}
+    \nicsitem{Preserves registers}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Assembly Workshop\dots}{}
+  \begin{nicscolumn*}{1cm}{1.7cm}{14cm}
+    \nicsheader{Assembling and linking}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{1.5cm}{2.5cm}{5cm}
+    \SMALL\nicsverbnoautocenter1
+    \begin{nicsterm}
+      as -o program.o program.s
+      ld -o program program.o
+    \end{nicsterm}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{7cm}{2.5cm}{5cm}
+    \SMALL\nicsverbnoautocenter1
+    \begin{nicsterm}
+      as --32 -o program.o program.s
+      ld -m elf_i386 -o program program.o
+    \end{nicsterm}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{1.5cm}{3.8cm}{5cm}
+    \SMALL\nicsverbnoautocenter1
+    \begin{nicsterm}
+      yasm -f elf64 program.s
+      ld -o program program.o
+    \end{nicsterm}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{7cm}{3.8cm}{5cm}
+    \SMALL\nicsverbnoautocenter1
+    \begin{nicsterm}
+      yasm -f elf32 program.s
+      ld -m elf_i386 -o program program.o
+    \end{nicsterm}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{1cm}{5.2cm}{14cm}
+    \nicsheader{Extracting the code}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{1.5cm}{6cm}{10cm}
+    \SMALL\nicsverbnoautocenter1
+    \begin{nicsterm}
+      objcopy -O binary -j .text program program.bin
+    \end{nicsterm}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{1.5cm}{6.7cm}{10cm}
+    \SMALL\nicsverbnoautocenter1
+    \begin{nicsterm}
+      yasm -f bin program.s -o program.bin
+      # BITS 32 or BITS 64 directive is required!
+    \end{nicsterm}
+  \end{nicscolumn*}
+\end{slide}
+
+
+
+\section{Stack Smashing}
+\nicstitleslide{images/overflow-waterfall}{Stack Buffer Overflows}{Introduction}
+
+\begin{slide}{Stack Buffer Overflows}{Brief history}
+  \begin{nicscolumn}
+    \nicsitem{\slant{1972} -- US Air Force study}
+    % TODO(klao): learn
+    \nicsitem{\nicsleadword{\slant{1988} --} Morris worm \\ CERT formed}
+    \nicsitem{\slant{1995} -- ``How to Write Buffer Overflows''}
+    \nicsitem{\slant{1996} -- ``Stack Smashing''}
+    \nicsitem{\slant{2003} -- Blaster worm}
+    \kern1cm
+    \nicspar{``Memory Corruption Attacks The (almost) Complete History'' \\
+      \tiny\url{https://media.blackhat.com/bh-us-10/whitepapers/Meer/BlackHat-USA-2010-Meer-History-of-Memory-Corruption-Attacks-wp.pdf}}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Stack Buffer Overflows}{Brief history}
+  \begin{nicscolumn}
+    \begin{nicsextern}[width=8cm]{}
+      \nicsincludepic{images/mem-corruption-chart}
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Stack Frame}{Stack Frame in GCC}
+  \begin{nicscolumn*}{3cm}{2cm}{14cm}
+    \nicspar{\nicsincludepic[width=10cm]{images/stack-frame-k}}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Stack Frame}{Buffer Overflow}
+  \begin{nicscolumn*}{3cm}{2cm}{14cm}
+    \nicspar{\nicsincludepic[width=10cm]{images/stack-frame-bo.pdf}}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Stack Frame}{Function Prologue and Epilogue}
+  \begin{nicscolumn}
+    \nicsexterncode{asm}
+    \begin{nicsextern}[height=6cm]{}
+      push   %rbp          Save frame pointer
+      movq   %rsp, %rbp    Initialize frame pointer
+      pushq  %rbx          Save non-volatile registers
+      pushq  %r12          clobbered by function
+      pushq  %r13
+      subq   $48, %rsp     Allocate stack frame
+
+      ...                  Function body
+
+      addq   $48, %rsp     Deallocate stack frame
+      popq   %r13          Restore registers
+      popq   %r12
+      popq   %rbx
+      leave                Restore %rbp
+                           and deallocate stack
+      ret
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Stack Frame}{Function Prologue and Epilogue (Actually)}
+  \begin{nicscolumn}
+    \nicsexterncode{asm}
+    \begin{nicsextern}[height=6cm]{}
+      movq   %rbx,-24(%rsp)   Save registers
+      movq   %r12,-16(%rsp)
+      movq   %r13,-8(%rsp)
+      subq   $72, %rsp        Allocate stack frame
+
+      ...                     Function body
+
+      movq   48(%rsp),%rbx    Restore registers
+      movq   56(%rsp),%r12
+      movq   64(%rsp),%r13
+      addq   $72, %rsp        Deallocate stack frame
+      ret
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Stack Frame}{Example}
+  \begin{nicscolumn}
+    \nicsexterncode{c}
+    \begin{nicsextern}[height=5cm]{}
+      #include <stdio.h>
+      #include <string.h>
+
+      void greet(char *name) {
+        char buf[20] = "Hello: ";
+        strcat(buf, name);
+        puts(buf);
+      }
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Stack Frame}{Example}
+  \begin{nicscolumn*}{1cm}{1.2cm}{14cm}
+    \nicsexterncode{asm}
+    \begin{nicsextern}[height=5.75cm]{}
+greet:
+        pushl   %ebp
+        movl    %esp, %ebp
+        subl    $40, %esp
+        movl    $0x6c6c6548, -28(%ebp)
+        movl    $0x203a6f, -24(%ebp)
+        movl    $0, -20(%ebp)
+        movl    $0, -16(%ebp)
+        movl    $0, -12(%ebp)
+        subl    $8, %esp
+        pushl   8(%ebp)
+        leal    -28(%ebp), %eax
+        pushl   %eax
+        call    strcat
+        addl    $16, %esp
+        subl    $12, %esp
+        leal    -28(%ebp), %eax
+        pushl   %eax
+        call    puts
+        addl    $16, %esp
+        nop
+        leave
+        ret
+    \end{nicsextern}
+    \kern3mm
+    \begin{nicsterm}
+      gcc -m32 -O0 -S -fno-stack-protector -fno-pie
+    \end{nicsterm}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Stack Frame}{Example}
+  \begin{nicscolumn*}{1cm}{1.5cm}{14cm}
+    \nicsexterncode{asm}
+    \begin{nicsextern}[height=5cm]{}
+greet:
+        pushl   %ebx
+        subl    $48, %esp
+        movl    $0x6c6c6548, 20(%esp)
+        movl    $0x203a6f, 24(%esp)
+        movl    $0, 28(%esp)
+        movl    $0, 32(%esp)
+        movl    $0, 36(%esp)
+        pushl   56(%esp)
+        leal    31(%esp), %eax
+        leal    24(%esp), %ebx
+        pushl   %eax
+        call    strcpy
+        movl    %ebx, (%esp)
+        call    puts
+        addl    $56, %esp
+        popl    %ebx
+        ret
+    \end{nicsextern}
+    \kern5mm
+    \begin{nicsterm}
+      gcc -m32 -O2 -S -fno-stack-protector -fno-pie
+    \end{nicsterm}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Stack Frame}{Example}
+  \begin{nicscolumn*}{1cm}{1.5cm}{14cm}
+    \nicsexterncode{asm}
+    \begin{nicsextern}[height=5cm]{}
+greet:
+        pushl   %ebp
+        xorl    %eax, %eax
+        movl    $3, %ecx
+        movl    %esp, %ebp
+        pushl   %edi
+        leal    -20(%ebp), %edi
+        subl    $44, %esp
+        movl    $0x6c6c6548, -28(%ebp)
+        rep stosl
+        leal    -28(%ebp), %edi
+        pushl   8(%ebp)
+        pushl   %edi
+        movl    $0x203a6f, -24(%ebp)
+        call    strcat
+        movl    %edi, (%esp)
+        call    puts
+        addl    $16, %esp
+        movl    -4(%ebp), %edi
+        leave
+        ret
+    \end{nicsextern}
+    \kern5mm
+    \begin{nicsterm}
+      gcc -m32 -Os -S -fno-stack-protector -fno-pie
+    \end{nicsterm}
+  \end{nicscolumn*}
+\end{slide}
+
+\nicstitleslide{images/stack-smashing}{Stack Smashing}{Workshop}
+
+\begin{slide}{Stack Smashing Workshop}{}
+  \begin{nicscolumn}
+    \nicsheader{Goal: get first-hand experience}
+    \nicsitem{All protections turned off}
+    \nicsitem{Explore GCC stack organization on x86-64}
+    \nicsitem{Very simple arc injection}
+    \nicsitem{Basic shell code}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Buffer Overflows}{Mitigation}
+  \begin{nicscolumn}
+    \nicsheader{What can you do as a programmer?}
+    \nicsitem{Use \mono{std::string}}
+    \nicsitem{Use modern, high abstraction C++ (e.g. \mono{std::array})}
+    \nicsitem{Use safe variants \mono{strncpy}, \mono{strlcat}, \dots}
+    \nicsitem{Aggressively document and check bounds and invariants}
+    \nicsitem{Undefined behavior --- \textbf{No!}}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Buffer Overflows}{Mitigation}
+  \begin{nicscolumn}
+    \nicsheader{Undefined Behavior}
+    \nicspar{\just Examples of undefined behavior are memory accesses
+      outside of array bounds, signed integer overflow, null pointer
+      dereference, modification of the same scalar more than once in
+      an expression without sequence points, access to an object
+      through a pointer of a different type, etc. Compilers are not
+      required to diagnose undefined behavior (although many simple
+      situations are diagnosed), and \bold{the compiled program is not
+      required to do anything meaningful}.}
+    \nicssmallskip
+    \nicspar{\SMALL\url{https://en.cppreference.com/w/cpp/language/ub}}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Buffer Overflows}{Mitigation}
+  \begin{nicscolumn}
+    \nicsheader{SEI CERT standard}
+    \nicspar{\SMALL\url{https://wiki.sei.cmu.edu/confluence/display/seccode/SEI+CERT+Coding+Standards}}
+    \nicsmedskip
+    \nicsitem{Familiarize yourself to know the extent}
+    \nicsitem{When in doubt read the rule(s) and weigh the options}
+    \nicsbigskip
+    \nicsheader{C++ Core Guidlines}
+    \nicspar{\SMALL\url{http://isocpp.github.io/CppCoreGuidelines/}}
+    \nicsbigskip
+    \nicspar{And more\dots}
+  \end{nicscolumn}
+\end{slide}
+
+
+\section{Security Mindset}
+\nicstitleslide{images/eng_hack}{Security Mindset}{Engineering vs Hacking}
+
+\begin{slide}{Security Mindset}{}
+  \begin{nicscolumn}
+    \nicsheader{Philosophising}
+    \nicsitem{Our brains are faulty}
+    \nicsitem{Our models are faulty}
+    \nicsitem{Our training is bad}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Brains}
+  \begin{nicscolumn*}{4cm}{1.5cm}{8cm}
+    \begin{nicsextern}{}
+      \nicsincludepic{images/overconfidence}
+    \end{nicsextern}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Models}
+  \begin{nicscolumn}
+    \nicsheader{``Secure Perimeter''}
+    \nicsitem{is almost always wrong}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Training}
+  \begin{nicscolumn}
+    \nicsheader{Code reviews / Testing}
+    \nicsitem{Don't do ``security'' unless you specifically train for that}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Brains}
+  \begin{nicscolumn}
+    \nicsheader{You don't see your own blindspots}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Models}
+  \begin{nicscolumn}
+    \nicsheader{``You are not a target''}
+    \nicsitem{is almost always wrong}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Training}
+  \begin{nicscolumn}
+    \nicsheader{Best practices}
+    \nicsitem{Don't work without the security mindset}
+
+    \kern3cm
+    \nicspar{Bruce Schneier: \href{https://www.schneier.com/blog/archives/2008/03/the_security_mi_1.html}{The Security Mindset}}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Example}
+  \begin{nicscolumn}
+    \nicsexterncode{c}
+    \begin{nicsextern}[height=6cm]{}
+      #define LOG_INPUT_SIZE 80
+
+      int outputFilenameToLog(char *filename) {
+        int success;
+
+        // buffer with size appropriate for logging
+        char buf[LOG_INPUT_SIZE];
+
+        // copy filename to buffer
+        strcpy(buf, filename);
+
+        // save to log
+        success = saveToLog(buf);
+
+        return success;
+      }
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Example}
+  \begin{nicscolumn}
+    \nicsexterncode{c}
+    \begin{nicsextern}[height=6cm]{}
+      #define LOG_INPUT_SIZE 80
+
+      int outputFilenameToLog(char *filename, int length) {
+        int success;
+
+        // buffer with size appropriate for logging
+        char buf[LOG_INPUT_SIZE];
+
+        // copy filename to buffer
+        strncpy(buf, filename, length);
+
+        // save to log
+        success = saveToLog(buf);
+
+        return success;
+      }
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Example}
+  \begin{nicscolumn}
+    \nicsexterncode{c}
+    \begin{nicsextern}[height=4cm]{}
+      int outputFilenameToLog(char *filename, int length) {
+        int success;
+
+        std::string buf = filename;
+
+        // save to log
+        success = saveToLog(buf.c_str());
+
+        return success;
+      }
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Example}
+  \begin{nicscolumn}
+    \nicsexterncode{c}
+    \begin{nicsextern}[height=6cm]{}
+      #define LOG_INPUT_SIZE 80
+
+      int outputFilenameToLog(char *filename, int length) {
+        int success;
+        char buf[LOG_INPUT_SIZE];
+
+        if (length > LOG_INPUT_SIZE - 1)
+          return -1;
+
+        strncpy(buf, filename, length);
+        buf[length] = 0;
+
+        success = saveToLog(buf);
+        return success;
+      }
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Example}
+  \begin{nicscolumn}
+    \nicsexterncode{c}
+    \begin{nicsextern}[height=6cm]{}
+      #define LOG_INPUT_SIZE 80
+
+      int outputFilenameToLog(char *filename, int length) {
+        int success;
+        char buf[LOG_INPUT_SIZE];
+
+        if (length > LOG_INPUT_SIZE - 1)
+          return -1;
+
+        strncpy(buf, filename, LOG_INPUT_SIZE - 1);
+        buf[LOG_INPUT_SIZE - 1] = 0;
+
+        success = saveToLog(buf);
+        return success;
+      }
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Security Mindset}{Brains}
+  \begin{nicscolumn}
+    \nicsheader{Engineer vs Hacker}
+    \nicsitem{Coffee machine story}
+  \end{nicscolumn}
+\end{slide}
+
+
+\section{W^X}
+\nicstitleslide{images/hardhats}{\mono{W^X}}{Executable-space protection}
+
+\begin{slide}{W^X}{History}
+  \begin{nicscolumn}
+    \nicsitem{First in OpenBSD in 2003}
+    \nicsitem{Windows XP, 2004}
+    \nicsitem{Linux}
+    \begin{nicsindent}
+      \nicsitem{PaX: 2000}
+      \nicsitem{Exec Shield: 2003}
+    \end{nicsindent}
+    \kern4mm
+    \nicsitem{NX bit in AMD's 64 bit CPUs}
+    \kern4mm
+    \nicsitem{Enabled by default in all modern 64bit distros}
+    \nicsitem{In 32bit mode enabled with PAE}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{W^X}{Explore}
+  \begin{nicscolumn}
+    \nicsitem{Check binaries and .so's with \mono{readelf -l}}
+    \nicsitem{Check running processes: \mono{/proc/<pid>/maps}}
+    \kern3mm
+    \nicsitem{Our ``target'' from Workshop 2, what if we remove the \mono{-z execstack}}
+    \begin{nicsindent}
+      \nicsitem{Would arc injection work?}
+      \nicsitem{Would shell code work?}
+      \nicsitem{How does it fail?}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{W^X}{Safe?}
+  \begin{nicscolumn}
+    \nicsheader{How much protection does it provide?}
+    \nicssmallskip
+    \nicspar{\just Say we find a stack buffer overflow.  We can't run a
+      shell code unless we un-\mono{mprotect} it, but we can't just
+      call \mono{mprotect} because we can't run arbitrary code.  So,
+      we can't do too much right?}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Return Oriented Programming}{}
+  \begin{nicscolumn*}{1cm}{2cm}{6cm}
+    \tiny\nicsverbnoautocenter1
+    \begin{nicscode}
+      |        |
+      |--------|
+      | 0x0765 | §\sans{← Original ret address}
+      |--------|
+      |        |
+    \end{nicscode}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Return Oriented Programming}{}
+  \begin{nicscolumn*}{1cm}{2cm}{6cm}
+    \tiny\nicsverbnoautocenter1
+    \begin{nicscode}
+      |  ...   |
+      |--------|
+      | 0xgag1 |  §\sans{← Original ret address}
+      |    0x0 |
+      |--------|
+      | 0xg002 |
+      |   0x3c |
+      |--------|
+      | 0xgeg3 |
+      |  ...   |
+    \end{nicscode}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{8cm}{2cm}{6cm}
+    \tiny\nicsverbnoautocenter1
+    \begin{nicscode}
+      0xgag1: pop %rdi
+              ret
+    \end{nicscode}
+    \nicssmallskip
+    \begin{nicscode}
+      0xg002: pop %rax
+              ret
+    \end{nicscode}
+    \nicssmallskip
+    \begin{nicscode}
+      0xgeg3: syscall
+    \end{nicscode}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Return Oriented Programming}{Discussion}
+  \begin{nicscolumn}
+    \nicsitem{All executable memory regions can be used}
+    \begin{nicsindent}
+      \nicsitem{Main program's \mono{.text}}
+      \nicsitem{Shared libraries}
+    \end{nicsindent}
+    \nicsitem{Not security specific libraries rarely checked for presence of rop gadgets}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Return Oriented Programming}{Demo}
+  \begin{nicscolumn}
+    \nicspar{Try the \mono{ropper} tool}
+  \end{nicscolumn}
+\end{slide}
+
+\section{Stack Protector}
+\nicstitleslide{images/stack-coins}{Stack Protector}{Detect stack smashing}
+
+\begin{slide}{Stack Protector}{History}
+  \begin{nicscolumn}
+    \nicsitem{StackGuard: 1997}
+    \nicsitem{GCC}
+    \begin{nicsindent}
+      \nicsitem{2001 -- 2005 ProPolice (IBM)}
+      \nicsitem{2005: reimplemented \mono{-fstack-protector} and \mono{-fstack-protector-all}}
+      \nicsitem{2012: \mono{-fstack-protector-strong}}
+      \nicsitem{On by default in some distros (Arch, Fedora -- strong), but not in others (Debian)}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Stack Protector}{Explore}
+  \begin{nicscolumn}
+    \nicsitem{Check Workshop 2's ``target'' without \mono{-fno-stack-protector}}
+    \nicsitem{Check with \mono{-fstack-protector} and \mono{-fstack-protector-all}}
+    \nicsitem{Godbolt demo}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Stack Protector}{Discussion}
+  \begin{nicscolumn}
+    \nicsitem{Only protects the return address}
+    \nicsitem{Local function pointers}
+    \begin{nicsindent}
+      \nicsitem{Tools to rearrange local variables}
+    \end{nicsindent}
+    \nicsitem{Initialized once for the lifetime of a thread}
+  \end{nicscolumn}
+\end{slide}
+
+
+\section{ASLR}
+\nicstitleslide{images/dice}{ASLR}{Address Randomization}
+
+\begin{slide}{Address Space Layout Randomization}{History}
+  \begin{nicscolumn}
+    \nicsitem{Linux}
+    \begin{nicsindent}
+      \nicsitem{2001: PaX project}
+      \nicsitem{2002: full implementation}
+      \nicsitem{2005: enabled by default (2.6.12)}
+      \nicsitem{????: PIE by default}
+    \end{nicsindent}
+    \nicsitem{OpenBSD: 2003 first ASLR by default, 2008 first to PIE by default}
+    \nicsitem{Windows: 2007, Vista (not for old binaries)}
+    \nicsitem{Mac OS X: 2007 system libs, 2011 for all apps}
+    \nicsitem{iOS and Android: 2011}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{ASLR}{What and how}
+  \begin{nicscolumn}
+    \nicsitem{What is randomized?}
+    \nicsitem{What isn't randomized?}
+    \nicsitem{Randomized by how much?}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{ASLR}{Explore}
+  \begin{nicscolumn}
+    \nicsheader{Goal: learn details of ASLR in Linux}
+    \nicsitem{Build (or choose) a PIE executable}
+    \nicsitem{Observe its memory map over multiple runs}
+    \nicsitem{How many independently randomized segments are there?}
+    \nicsitem{What are they?}
+    \nicsitem{Write your own C or C++ program and check your findings ``from within''}
+    \nicsitem{Repeat for 64 and 32 bits}
+    \nicssmallskip
+    \nicsheader{Additionally}
+    \nicsitem{What about non-PIE executables?}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{ASLR}{How to defeat}
+  \begin{nicscolumn}
+    \nicsitem{Reduce entropy}
+    \begin{nicsindent}
+      \nicsitem{Heap spraying and NOP slides}
+    \end{nicsindent}
+    \nicsitem{Information leak}
+    \begin{nicsindent}
+      \nicsitem{Through other vulnerability}
+      \nicsitem{Side channel}
+      \begin{nicsindent}
+        \nicsitem{\href{http://www.cs.ucr.edu/~nael/pubs/micro16.pdf}{Jump Over ASLR}}
+        \nicsitem{\href{https://www.vusec.net/projects/anc/}{ASLR ⊕ Cache}}
+      \end{nicsindent}
+    \end{nicsindent}
+    \nicsitem{Brute force}
+    \begin{nicsindent}
+      \nicsitem{Mitigation: throttle crashes}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{ASRL}{Linux details}
+  \begin{nicscolumn}
+    \nicsheader{Performance}
+    \nicsitem{On x86-32 there is quite a price (\href{http://ewontfix.com/18/}{read})}
+    \nicsitem{x86-64: much better, hardware support for PC-relative addressing, but not free}
+    \nicsmedskip
+    \nicsheader{Statically linked binaries}
+    \nicsitem{Limited ASLR}
+    \nicsitem{Build a dynamic binary which has everything statically linked}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{ASRL}{Enable/disable}
+  \begin{nicscolumn}
+    \Small
+    \begin{nicsterm}
+      echo 0 > /proc/sys/kernel/randomize_va_space
+      sysctl -w kernel.randomize_va_space=0
+    \end{nicsterm}
+    \nicsitem{0: no randomization}
+    \nicsitem{1: conservative randomization (shared libs, stack, mmap, VDSO)}
+    \nicsitem{2: full randomization (brk() aka. heap too)}
+    \nicsmedskip
+    \nicspar{\mono{personality} syscall to change execution domain for
+      a single process (and its children)}
+    \begin{nicsterm}
+      setarch `uname -m` -R /bin/bash
+    \end{nicsterm}
+    \nicsmedskip
+    \nicspar{GDB turns it off by default for easier debugging! Turn
+      back on with \\ \mono{set disable-randomization off} (or simply
+      \mono{aslr on} with GEF and co.)}
+  \end{nicscolumn}
+\end{slide}
+
+%% End of day 1
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\section{Trade-offs}
+\nicstitleslide{images/chess}{Security is a Trade-off}{}
+
+\begin{slide}{All or nothing?}{}
+  \begin{nicscolumn}
+    \nicspar{Security is not all or nothing}
+    \nicspar{Have to prioritize it together with}
+    \begin{nicsindent}
+      \nicsitem{costs}
+      \nicsitem{speed of development}
+      \nicsitem{maintainability}
+      \nicsitem{performance}
+      \nicsitem{code quality}
+      \nicsitem{\dots}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Performance}{}
+  \begin{nicscolumn}
+    \nicsitem{Many of the general protections are cheap, but not zero
+      cost}
+
+    \nicsitem{Example: using \mono{std::string} for all processing
+      results in many small strings on heap; might result in
+      significant performace hit}
+    \nicsitem{Redundant validation}
+    \nicsmedskip
+    \nicspar{Solution: profile don't guess!}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Development time & costs}{}
+  \begin{nicscolumn}
+    \nicsitem{Cognitive load can be significant}
+    \nicsitem{Solution}
+    \begin{nicsindent}
+      \nicsitem{Traning. Learn the patterns, become more confident and
+        productive, less load}
+      \nicsitem{Break things up. Not all phases are equally important}
+      \begin{nicsindent}
+        \nicsitem{More focus during design}
+        \nicsitem{Less during development}
+        \nicsitem{More during review and testing}
+      \end{nicsindent}
+    \end{nicsindent}
+    \nicssmallskip
+    \nicsitem{Pays off with code quality and maintainability}
+    \begin{nicsindent}
+      \nicsitem{Biggest enemy: complexity}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Flexibility & Usability}{}
+  \begin{nicscolumn}
+    \nicsitem{Requires a lot of self-discipline}
+    \nicsitem{The UX design have to be involved and security minded}
+    \nicsitem{Risk modelling and mitigation}
+  \end{nicscolumn}
+\end{slide}
+
+
+\section{Heap vulnerabilities}
+\nicstitleslide{images/heap-overflow}{Heap Buffer Overflows}{and other vulnerabilities}
+
+\begin{slide}{Heap vulnerabilities}{Overview}
+  \begin{nicscolumn}
+    \nicsheader{Buffer Over/underflows}
+    \nicsitem{Overwrites other data on the heap}
+    \nicsitem{Overwrites memory managment internal bookkeeping data}
+
+    \nicsmedskip
+    \nicsheader{Improper handling}
+    \nicsitem{Use after free}
+    \nicsitem{Double \mono{free} / \mono{delete}}
+    \nicsitem{Mixing \mono{malloc/new} and \mono{free/delete}}
+    \nicsitem{Mixing \mono{new/new[]} and \mono{delete/delete[]}}
+    \nicsitem{\dots}
+    \nicssmallskip
+    \nicsitem{Corrupts memory managment internal bookkeeping data}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Malloc internals}{}
+  \begin{nicscolumn*}{1cm}{1.5cm}{14cm}
+    \begin{nicsextern}{}
+      \nicsincludepic{images/malloc_internals}
+    \end{nicsextern}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{1cm}{7.2cm}{14cm}
+    \nicspar{\url{https://sourceware.org/glibc/wiki/MallocInternals}}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Malloc internals}{unlink}
+  \begin{nicscolumn}
+    \begin{nicscode}
+      #define unlink(P, BCK, FWD) { \
+        FWD = P->fwd; \
+        BCK = P->bck; \
+        FWD->bck = BCK; \
+        BCK->fwd = FWD; \
+      }
+    \end{nicscode}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Heap vulnerabilities}{Mitigation}
+  \begin{nicscolumn}
+    \nicsitem{General buffer overflow prevention}
+    \nicsitem{Smart pointers}
+    \nicsmedskip
+    \nicspar{Tools:}
+    \nicsitem{Valgrind}
+    \nicsitem{GCC & Clang both have superb built-in sanitizers}
+    \begin{nicsindent}
+      \nicsitem{\mono{-fsanitize=address -fno-omit-frame-pointer}}
+      \nicsitem{\url{https://github.com/google/sanitizers/wiki/AddressSanitizerFlags}}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Heap vulnerabilities}{Explore}
+  \begin{nicscolumn}
+    \nicsitem{Does \mono{operator new} calls malloc? How?}
+    \nicsitem{What does this code compile to? What are the different parts?}
+    {
+      \SMALL
+      \begin{nicscode}
+        int *allocate(int num) {
+          return new int[num]();
+        }
+      \end{nicscode}
+    }
+    \nicsmedskip
+
+    \nicsitem{Write a program that allocates a few chunks, fills them
+      with something easily recognizable, then debug it and
+      investigate how it all looks\dots}
+
+  \end{nicscolumn}
+\end{slide}
+
+\section{Format String Vulnerabilities}
+\nicstitleslide{images/format-string}{Format String Vulnerabilities}{printf(☠)}
+
+\begin{slide}{Format String Vulnerabilities}{}
+  \begin{nicscolumn}
+    \nicsheader{History}
+    \nicsitem{Exploded in 2000}
+    \nicsitem{Considered ``bug'', easy to detect}
+    \nicsitem{Full remote root in many cases}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Format String Vulnerabilities}{}
+  \begin{nicscolumn}
+    \nicsheader{What's the problem with this code:}
+    \nicsexterncode{c}
+    \begin{nicsextern}{}
+      char tmpbuf[512];
+
+      snprintf (tmpbuf, sizeof (tmpbuf), "login attempt: %s", user);
+      tmpbuf[sizeof (tmpbuf) - 1] = '\0';
+      syslog (LOG_NOTICE, tmpbuf);
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Format String Vulnerabilities}{}
+  \begin{nicscolumn}
+    \nicsheader{What's the problem with this code:}
+    \nicsexterncode{c}
+    \begin{nicsextern}{}
+      char tmpbuf[512];
+
+      snprintf (tmpbuf, sizeof (tmpbuf), "login attempt: %s", user);
+      tmpbuf[sizeof (tmpbuf) - 1] = '\0';
+      fprintf (log_file, tmpbuf);
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Format String Vulnerabilities}{}
+  \begin{nicscolumn}
+    \nicspar{Basically, this is always wrong and a vulnerability:}
+    \nicsmedskip
+    \begin{nicscode}
+      printf_like_function(attacker_controlled_string);
+    \end{nicscode}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Variadic Functions}{}
+  \begin{nicscolumn}
+    \nicsexterncode{c}
+    \begin{nicsextern}[height=6cm]{}
+      #include <stdio.h>
+      #include <stdarg.h>
+
+      int FindMax(int n, ...) {
+        int i, val, largest;
+        va_list vl;
+        va_start(vl, n);
+        largest = va_arg(vl, int);
+        for (i = 1; i < n; i++) {
+          val = va_arg(vl, int);
+          largest = (largest > val) ? largest : val;
+        }
+        va_end(vl);
+        return largest;
+      }
+
+      int main() {
+        int m;
+        m = FindMax(7,702,422,631,834,892,104,772);
+        printf("The largest value is: %d\n",m);
+        return 0;
+      }
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Format String Vulnerabilities}{How to exploit}
+  \begin{nicscolumn}
+    \nicsitem{Look arbitrarily up the stack: \mono{"\%p\%p\%p\%p\%p\%p\%p\%p"}}
+    \nicsitem{Crash (denial of service): \mono{"\%s\%s\%s\%s\%s\%s\%s\%s"}}
+    \nicsitem{Write arbitrary\textsuperscript{*} memory: \mono{\%n}}
+    \begin{nicsindent}
+      \nicspar{\textsuperscript{*}: with many limitations}
+      \nicsitem{Format string \slant{or} buffer we are writing to have to be on the stack (and not too far)}
+      \nicsitem{Address can't contain 0 bytes. Makes it significantly harder (if not impossible) on x86-64}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Format String Vulnerabilities}{Explore}
+  \begin{nicscolumn}
+    \nicsitem{Write a small program with which you can explore bad format strings}
+    \nicsitem{Walk up the stack, can you identify all the pieces?}
+    \nicsitem{Make sure you have stack canaries\dots}
+    \begin{nicsindent}
+      \nicsitem{What can you tell about stack canary values? Why might that be?}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Format String Vulnerabilities}{Mitigation}
+  \begin{nicscolumn}
+    \nicsitem{Format strings should be constant literals}
+    \begin{nicsindent}
+      \nicsitem{OK, \slant{maybe} allow \mono{_("format")} with \mono{gettext}}
+    \end{nicsindent}
+    \nicsitem{Static analysis tools detect these well}
+    \nicsmedskip
+    \nicspar{Generally for variadic functions}
+    \nicsitem{Don't use variadic functions}
+    \nicsitem{Use variadic templates}
+  \end{nicscolumn}
+\end{slide}
+
+\section{Integers}
+\nicstitleslide{images/integers}{Integer Vulnerabilities}{``Signed overflow is Undefined Behavior?''}
+
+\begin{slide}{Integer Vulnerabilities}{}
+  \begin{nicscolumn}
+    \nicsitem{Integer conversion/promotion rules are \slant{complex}}
+    \nicssmallskip
+    \begin{nicsindent}
+    \nicspar{\just ``Well, at the time we thought compatibility with B
+      was important, so we kept that; I wish we hadn’t, no one cares
+      about B anymore.''}
+    \end{nicsindent}
+
+    \nicsmedskip
+    \nicsitem{Many things are ``Implementation Defined''}
+    \begin{nicsindent}
+      \nicsitem{Can cause problems much later than the code was written}
+    \end{nicsindent}
+
+    \nicsmedskip
+    \nicsitem{Hard to reason about}
+    \begin{nicsindent}
+      \nicsitem{\mono{-INT_MIN} is \mono{INT_MIN}?}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Integer Vulnerabilities}{Examples}
+  \begin{nicscolumn}
+    \nicsexterncode{c}
+    \begin{nicsextern}[height=4cm]{}
+      void getComment(size_t len, char *src) {
+        size_t size;
+        size = len - 2;
+        char *comment = (char *)malloc(size + 1);
+        memcpy(comment, src, size);
+        return;
+      }
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Integer Vulnerabilities}{Examples}
+  \begin{nicscolumn}
+    \begin{nicscode}
+      p = calloc(sizeof(element_t), count);
+    \end{nicscode}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Integer Vulnerabilities}{Examples}
+  \begin{nicscolumn}
+    \begin{nicscode}
+      if (off > len - sizeof(type_name)) goto error;
+    \end{nicscode}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Integer Vulnerabilities}{Examples}
+  \begin{nicscolumn}
+    \nicsexterncode{c}
+    \begin{nicsextern}[height=4cm]{}
+      void initialize_array(int size) {
+        if (size < MAX_ARRAY_SIZE) {
+          array = malloc(size);
+          /* initialize array */
+        } else {
+          /* handle error */
+        }
+      }
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Integer Vulnerabilities}{Mitigation}
+  \begin{nicscolumn}
+    \nicsitem{Check the ranges obsessively}
+    \nicsitem{Use \mono{size_t} for sizes of objects}
+    \begin{nicsindent}
+      \nicsitem{Or at least \mono{unsigned} types}
+      \nicsitem{C11 Annex K: \mono{rsize_t}}
+    \end{nicsindent}
+    \nicsitem{User defined types with better semantics}
+    \begin{nicsindent}
+      \nicsitem{User defined literals!}
+      \nicsitem{\mono{5_hour + 10_kg}}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\section{FORTIFY_SOURCE}
+\nicstitleslide{images/fortification}{FORTIFY_SOURCE}{Fixing your buffer overflows for you}
+
+\section{RELRO}
+\nicstitleslide{images/ro-maci}{RELRO}{RELocation Read-Only}
+
+\section{CET}
+\nicstitleslide{images/control-flow}{Control-Flow Enforcement Technology}{}
+
+\begin{slide}{Control-Flow Enforcement Technology}{}
+  \begin{nicscolumn}
+    \nicsitem{\href{https://software.intel.com/sites/default/files/managed/4d/2a/control-flow-enforcement-technology-preview.pdf}{Intel Spec}}
+    \nicsitem{\url{https://lwn.net/Articles/758245/}}
+  \end{nicscolumn}
+\end{slide}
+
+\section{Server exploit}
+\nicstitleslide{images/workshop}{Exploit a ``Server''}{Workshop}
+
+\begin{slide}{``Server'' exploit}{}
+  \begin{nicscolumn}
+    \nicspar{Goal: to see a (reasonably) real-world example with all
+      of the protections enabled, which can nevertheless be
+      exploited.}
+  \end{nicscolumn}
+\end{slide}
+
+
+
+\section{Best Practices}
+\nicstitleslide{images/best-practices}{Best Practices}{What to do}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicspar{\just Within C++, there is a much Small and cleaner
+      language struggling to get out.}
+    \nicspar{~\kern8cm Bjarne Stroustrup}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicspar{\just Within C++, there is a much Small and cleaner
+      language struggling to get out.}
+    \nicspar{~\kern8cm Bjarne Stroustrup}
+    \nicsmedskip
+    \nicspar{\just And no, that Small and cleaner language is not Java
+      or C\#.}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicsheader{SEI CERT standard}
+    \nicspar{\SMALL\url{https://wiki.sei.cmu.edu/confluence/display/seccode/SEI+CERT+Coding+Standards}}
+    \nicssmallskip
+    \nicsitem{Familiarize yourself to know the extent}
+    \nicsitem{When in doubt read the rule(s) and weigh the options}
+    \nicsmedskip
+    \nicsheader{C++ Core Guidlines}
+    \nicspar{\SMALL\url{http://isocpp.github.io/CppCoreGuidelines/}}
+    \nicsmedskip
+    \nicspar{And more\dots}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicspar{Run tests with many different setups}
+    \nicsitem{Different compilers}
+    \nicsitem{Different optimization options}
+    \nicsitem{Memory constrained (?)}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicspar{Not allocate with new}
+    \nicsitem{Smart pointers}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicspar{Not allocate with new}
+    \nicsitem{Smart pointers}
+    \nicsmedskip
+    \nicspar{Shared pointers stink}
+    \nicsitem{If they start to spread --- time to think}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicsitem{Prefer \mono{enum class} to \mono{enum}s}
+    \begin{nicsindent}
+      \nicsitem{No undefined behavior of converting \mono{int} to enum out of range}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicsitem{String literals: \mono{"foobar"s}}
+    \nicsmedskip
+    \nicsitem{User defined literals: \mono{5_hour + 10_kg}}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicsitem{Check the ranges obsessively}
+    \nicsitem{Use \mono{size_t} for sizes of objects}
+    \begin{nicsindent}
+      \nicsitem{Or at least \mono{unsigned} types}
+      \nicsitem{C11 Annex K: \mono{rsize_t}}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{C11, Annex K}{}
+  \begin{nicscolumn}
+    \nicspar{Secure variants of many functions}
+    \nicsitem{\mono{memcpy_s}, \mono{strcat_s}, \dots}
+    \nicsitem{\mono{gets_s}, \mono{printf_s}, \dots}
+    \nicsmedskip
+    \nicsitem{Not in glibc}
+    \nicsitem{Generally poor adoption}
+    \begin{nicsindent}
+      \nicsitem{Considered for removal}
+      \nicsitem{Interface & ease of adoption matters}
+      \nicsitem{\href{http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1967.htm}{Field Experience With Annex K — Bounds Checking Interfaces}}
+    \end{nicsindent}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{C11, Annex K}{Continued}
+  \begin{nicscolumn}
+    \nicspar{\mono{memset} is sometimes used to zero-out sensitive memory}
+    \nicsitem{Often optimized out if the memory ``cannot'' be accessed later}
+    \nicsitem{\mono{memset_s} is specified to \slant{not be} optimized out}
+    \nicsitem{Research alternatives on your platform if you need this}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Compilers are Evil}{Or maybe specs are}
+  \begin{nicscolumn}
+    \nicsexterncode{c}
+    \begin{nicsextern}[height=4cm]{}
+      void GetData(char *MFAddr) {
+        char pwd[64];
+        if (GetPasswordFromUser(pwd, sizeof(pwd))) {
+          ...
+        }
+        memset(pwd, 0, sizeof(pwd));
+      }
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Undefined Behavior is Evil}{Or maybe compilers are}
+  \begin{nicscolumn}
+    \nicsexterncode{c}
+    \begin{nicsextern}[height=6cm]{}
+      #include <iostream>
+      #include <complex>
+      using namespace std;
+
+      int main(void) {
+        complex<int> delta;
+        complex<int> mc[4] = {0};
+
+        for (int di = 0; di < 4; di++, delta = mc[di]) {
+          cout << di << endl;
+        }
+      }
+    \end{nicsextern}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicsheader{Warnings are errors}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicspar{Be selective with the libraries you use}
+    \nicsitem{Open source libraries have more eyes on them, but also easier
+      targets}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Dynamic Analysis}{}
+  \begin{nicscolumn}
+    \nicspar{GCC and Clang both have good sanitizers}
+    \begin{nicsindent}
+      \nicsitem{asan}
+      \nicsitem{tsan}
+      \nicsitem{ubsan}
+    \end{nicsindent}
+    \nicsmedskip
+    \nicspar{Espesically effective with stress and scalability tests}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Best Practices}{}
+  \begin{nicscolumn}
+    \nicsheader{Do stress testing}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Fuzz Testing}{}
+  \begin{nicscolumn}
+    \nicspar{Fuzz testing can be very effective in uncovering bugs
+      which might lead to vulnerabilities}
+    \nicsitem{Requires a significant investment (similar to TDD)}
+  \end{nicscolumn}
+\end{slide}
+
+
+\section{Miscellaneous}
+\nicstitleslide{images/misc}{Miscellaneous}{Topics we didn't touch}
+
+\begin{slide}{Concurrency}{}
+  \begin{nicscolumn}
+    \nicsitem{A world in its own}
+    \nicsmedskip
+    \nicsitem{Minimize shared data}
+    \nicsitem{Thread sanitizer}
+  \end{nicscolumn}
+  \begin{nicscolumn*}{8cm}{2cm}{7cm}
+    \begin{nicsextern}{}
+      \nicsincludepic{images/race}
+    \end{nicsextern}
+  \end{nicscolumn*}
+\end{slide}
+
+\begin{slide}{Unicode}{Complexity in strings}
+  \begin{nicscolumn}
+    \nicsitem{Unicode Standard is more than 1000 pages}
+    \nicsitem{Many things that seem easy are actually quite complex}
+    \begin{nicsindent}
+      \nicsitem{Are two strings ``equal''?}
+      \nicsitem{Different strings can still look exactly the same}
+      \nicsitem{Length of a string?}
+    \end{nicsindent}
+
+    \nicsbigskip
+    \nicspar{I18N in general is tricky and common source of bugs & vulnerabilities}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Sensitive Information}{}
+  \begin{nicscolumn}
+    \nicsitem{Logging is not neutral}
+    \begin{nicsindent}
+      \nicsitem{Memory dumps\dots}
+    \end{nicsindent}
+    \nicsitem{Lifetime management}
+    \nicsitem{What gets on a disk}
+  \end{nicscolumn}
+\end{slide}
+
+\begin{slide}{Secure communication}{}
+  \begin{nicscolumn}
+    \nicsitem{DDoS, Men-in-the-middle, Spoofing, Byzantine failures, Side channels, oh my!}
+
+    \nicsbigskip
+    \nicsitem{Cryptography in general\dots}
+  \end{nicscolumn}
+\end{slide}
+
+
+\nicstitleslide{images/thankyou}{The End}{Thanks, and good luck with all your coding!}
+
+\end{document}
