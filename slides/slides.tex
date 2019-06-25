@@ -81,7 +81,8 @@
   \begin{nicscolumn}
     \nicsheader{Online references}
     \nicsitem{\url{https://www.felixcloutier.com/x86/}}
-    \nicsitem{\url{https://www.aldeid.com/wiki/X86-assembly/Instructions}\\ (less comprehensive, more readable)}
+    %\nicsitem{\url{https://www.aldeid.com/wiki/X86-assembly/Instructions}\\ (less comprehensive, more readable)}
+    \nicsitem{\url{https://godbolt.org/}}
     \nicsitem{\url{https://defuse.ca/online-x86-assembler.htm}\\(online assembler/disassembler)}
     \nicsitem{\url{http://www.sandpile.org/}}
     \nicsheader{Learning, Books}
@@ -91,7 +92,7 @@
   \end{nicscolumn}
 \end{slide}
 
-\begin{slide}{Syntax}{Intel vs AT&T syntax}
+\begin{slide}{Syntax}{AT&T vs Intel syntax}
   \begin{nicscolumn*}{0.7cm}{2cm}{7.2cm}
     \nicsitem{Common on Linux, default syntax for most Linux tools:
       \mono{gcc}, \mono{as}, \mono{gdb}\dots\\ ~ \\}
@@ -113,7 +114,7 @@
   \end{nicscolumn*}
 \end{slide}
 
-\begin{slide}{Syntax\dots}{}
+\begin{slide}{Syntax\dots}{AT&T vs Intel}
   \begin{nicscolumn*}{0.7cm}{1.5cm}{7cm}
     \nicsitem{\mono{mov $symbol, \%rax}\\
       Loads the address of \mono{symbol}}
@@ -122,7 +123,7 @@
     \nicspar{Memory references:}
     \nicsitem{\mono{mov 0x18(\%rdi,\%rsi,4), \%rax}\\
       {\tiny displacement(base register, offset register, scalar)}}
-    \nicsitem{\mono{movb $5, (\%rax)}\\
+    \nicsitem{\mono{movq $5, (\%rax)}\\
       \mono{movb $5, (\%rax)}\\
       \mono{b}, \mono{w}, \mono{l}, \mono{q} suffix to the opcode}
   \end{nicscolumn*}
@@ -138,22 +139,22 @@
   \end{nicscolumn*}
 \end{slide}
 
-\begin{slide}{Syntax\dots}{}
+\begin{slide}{Syntax\dots}{AT&T vs Intel}
   \begin{nicscolumn*}{0.7cm}{1.5cm}{7cm}
     \nicspar{Mnemonic differences}
-    \nicsitem{\mono{cwd}, \mono{cdq}, \mono{cqo}, \dots\\}
+    \nicsitem{\mono{cwtd}, \mono{cdtl}, \mono{cqto}, \dots\\}
     \nicsitem{Comments prefixed with \mono{\#}}
     \nicsitem{Directives prefixed with \mono{.}}
   \end{nicscolumn*}
   \begin{nicscolumn*}{8.3cm}{1.5cm}{7.5cm}
     \nicspar{}
-    \nicsitem{\mono{cwtd}, \mono{cdtl}, \mono{cqto}, \dots\\}
+    \nicsitem{\mono{cwd}, \mono{cdq}, \mono{cqo}, \dots\\}
     \nicsitem{Comments prefixed with \mono{;}}
     \nicsitem{Directives have no prefix}
   \end{nicscolumn*}
 \end{slide}
 
-\begin{slide}{Syntax example}{}
+\begin{slide}{Syntax example}{AT&T vs Intel}
   \begin{nicscolumn*}{4cm}{1.5cm}{8cm}
     \nicsexterncode{c}
     \begin{nicsextern}[width=5cm]{}
@@ -167,7 +168,7 @@
     \begin{nicsextern}[height=3.7cm]{}
       .section .text
 
-      .globl example
+      .global example
       example:
         # First argument to %rax and sign extend to %rdx
         movq    %rdi, %rax
@@ -217,6 +218,8 @@
 
 \begin{slide}{Assembly Workshop\dots}{}
   \begin{nicscolumn*}{0.7cm}{1.5cm}{7cm}
+    % TODO(klao): a slide with the regular ABI
+    % References
     \nicsheader{Linux syscall ABI}
     \nicspar{64 bit}
     \nicsitem{Syscall number in \mono{rax}}
@@ -284,9 +287,25 @@
       # BITS 32 or BITS 64 directive is required!
     \end{nicsterm}
   \end{nicscolumn*}
+  \begin{nicscolumn*}{10cm}{5.2cm}{14cm}
+    \nicsheader{Disassemble}
+  \end{nicscolumn*}
+  \begin{nicscolumn*}{10.5cm}{6cm}{7cm}
+    \SMALL\nicsverbnoautocenter1
+    \begin{nicsterm}
+      objdump -d
+      disassemble  # in gdb
+    \end{nicsterm}
+  \end{nicscolumn*}
 \end{slide}
 
+% TODO(klao): tool slide:
+% objdump -d
+% gdb disassemble
+% readelf ...
 
+% TODO(klao): -g
+% Into Makefiles and note on the slides
 
 \section{Stack Smashing}
 \nicstitleslide{images/overflow-waterfall}{Stack Buffer Overflows}{Introduction}
@@ -312,6 +331,8 @@
     \end{nicsextern}
   \end{nicscolumn}
 \end{slide}
+
+% TODO(klao): next two slides fix %rbp pointer
 
 \begin{slide}{Stack Frame}{Stack Frame in GCC}
   \begin{nicscolumn*}{3cm}{2cm}{14cm}
@@ -924,7 +945,7 @@ greet:
   \end{nicscolumn}
 \end{slide}
 
-\begin{slide}{ASRL}{Linux details}
+\begin{slide}{ASLR}{Linux details}
   \begin{nicscolumn}
     \nicsheader{Performance}
     \nicsitem{On x86-32 there is quite a price (\href{http://ewontfix.com/18/}{read})}
@@ -936,7 +957,7 @@ greet:
   \end{nicscolumn}
 \end{slide}
 
-\begin{slide}{ASRL}{Enable/disable}
+\begin{slide}{ASLR}{Enable/disable}
   \begin{nicscolumn}
     \Small
     \begin{nicsterm}
